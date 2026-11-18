@@ -1,0 +1,60 @@
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: teamtracker_mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: teamtracker
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - teamtracker_net
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: teamtracker_server
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - MONGO_URI=mongodb://mongodb:27017/teamtracker
+      - JWT_SECRET=${JWT_SECRET:-production_secure_jwt_secret_key_change_me}
+      - CLIENT_URL=${CLIENT_URL:-http://localhost:3000}
+      - AI_API_KEY=${AI_API_KEY:-}
+      - AI_PROVIDER=${AI_PROVIDER:-openai}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - teamtracker_net
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: teamtracker_client
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - server
+    networks:
+      - teamtracker_net
+
+volumes:
+  mongodb_data:
+
+networks:
+  teamtracker_net:
+    driver: bridge
