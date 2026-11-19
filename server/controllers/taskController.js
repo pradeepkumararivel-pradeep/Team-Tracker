@@ -3,6 +3,11 @@ const Project = require('../models/Project');
 const Notification = require('../models/Notification');
 const ActivityLog = require('../models/ActivityLog');
 
+const canAssignTasks = (user) => ['Admin', 'Team Leader'].includes(user.role);
+
+const isProjectMember = (project, userId) =>
+  project.owner.equals(userId) || project.members.some((member) => member.equals(userId));
+
 const recalculateProjectProgress = async (projectId) => {
   const tasks = await Task.find({ project: projectId });
   if (tasks.length === 0) {
@@ -51,6 +56,15 @@ const createTask = async (req, res, next) => {
 
     const targetProject = await Project.findById(project);
     if (!targetProject) return res.status(404).json({ success: false, message: 'Project not found' });
+
+    if (assignedTo) {
+      if (!canAssignTasks(req.user)) {
+        return res.status(403).json({ success: false, message: 'Only Admins and Team Leaders can assign tasks' });
+      }
+      if (!isProjectMember(targetProject, assignedTo)) {
+        return res.status(400).json({ success: false, message: 'Assignee must be a member of the project' });
+      }
+    }
 
     const task = await Task.create({
       title,
@@ -104,6 +118,19 @@ const updateTask = async (req, res, next) => {
   try {
     const task = await Task.findById(req.params.id);
     if (!task) return res.status(404).json({ success: false, message: 'Task not found' });
+
+    if (Object.prototype.hasOwnProperty.call(req.body, 'assignedTo')) {
+      if (!canAssignTasks(req.user)) {
+        return res.status(403).json({ success: false, message: 'Only Admins and Team Leaders can assign tasks' });
+      }
+      if (req.body.assignedTo) {
+        const project = await Project.findById(task.project);
+        if (!project) return res.status(404).json({ success: false, message: 'Project not found' });
+        if (!isProjectMember(project, req.body.assignedTo)) {
+          return res.status(400).json({ success: false, message: 'Assignee must be a member of the project' });
+        }
+      }
+    }
 
     Object.assign(task, req.body);
     await task.save();

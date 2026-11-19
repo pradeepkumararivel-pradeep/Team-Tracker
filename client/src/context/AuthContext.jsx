@@ -13,7 +13,35 @@ export const AuthProvider = ({ children }) => {
     if (token && storedUser) {
       setUser(JSON.parse(storedUser));
     }
-    setLoading(false);
+
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
+    let active = true;
+    api.get('/auth/profile')
+      .then(({ data }) => {
+        if (!active) return;
+        setUser(data.data);
+        localStorage.setItem('user', JSON.stringify(data.data));
+      })
+      .catch((error) => {
+        if (error.response?.status === 401) {
+          if (!active) return;
+          setUser(null);
+          localStorage.removeItem('user');
+        } else {
+          console.error('Failed to refresh the current user profile', error);
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const login = async (email, password) => {

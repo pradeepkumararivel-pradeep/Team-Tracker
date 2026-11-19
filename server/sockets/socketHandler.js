@@ -34,6 +34,10 @@ const socketHandler = (io) => {
       }
     });
 
+    socket.on('leave_project', (projectId) => {
+      if (projectId) socket.leave(projectId);
+    });
+
     socket.on('send_message', (data) => {
       if (data?.projectId) {
         io.to(data.projectId).emit('receive_message', data);

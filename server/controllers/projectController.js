@@ -1,7 +1,12 @@
 const Project = require('../models/Project');
 const Task = require('../models/Task');
+const User = require('../models/User');
+const mongoose = require('mongoose');
 const ActivityLog = require('../models/ActivityLog');
 const Notification = require('../models/Notification');
+
+const canManageMembers = (project, user) =>
+  user.role === 'Admin' || project.owner.equals(user._id);
 
 const getProjects = async (req, res, next) => {
   try {
@@ -117,17 +122,27 @@ const addMember = async (req, res, next) => {
     const project = await Project.findById(req.params.id);
     if (!project) return res.status(404).json({ success: false, message: 'Project not found' });
 
-    if (req.user.role !== 'Admin' && !project.owner.equals(req.user._id)) {
+    if (!canManageMembers(project, req.user)) {
       return res.status(403).json({ success: false, message: 'Not authorized to manage members' });
     }
 
     const { userId } = req.body;
-    if (!project.members.includes(userId)) {
-      project.members.push(userId);
+    if (!mongoose.isValidObjectId(userId)) {
+      return res.status(400).json({ success: false, message: 'A valid userId is required' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user || !user.isActive) {
+      return res.status(404).json({ success: false, message: 'Active user not found' });
+    }
+
+    const alreadyMember = project.members.some((member) => member.equals(user._id));
+    if (!alreadyMember) {
+      project.members.push(user._id);
       await project.save();
 
       await Notification.create({
-        recipient: userId,
+        recipient: user._id,
         sender: req.user._id,
         type: 'project_invite',
         title: 'Added to Project',
@@ -146,11 +161,35 @@ const addMember = async (req, res, next) => {
   }
 };
 
+const getAvailableMembers = async (req, res, next) => {
+  try {
+    const project = await Project.findById(req.params.id);
+    if (!project) return res.status(404).json({ success: false, message: 'Project not found' });
+
+    if (!canManageMembers(project, req.user)) {
+      return res.status(403).json({ success: false, message: 'Not authorized to manage members' });
+    }
+
+    const existingMembers = [...project.members, project.owner];
+    const users = await User.find({
+      isActive: true,
+      _id: { $nin: existingMembers }
+    })
+      .select('name email role')
+      .sort({ name: 1 });
+
+    res.json({ success: true, count: users.length, data: users });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getProjects,
   getProjectById,
   createProject,
   updateProject,
   deleteProject,
-  addMember
+  addMember,
+  getAvailableMembers
 };

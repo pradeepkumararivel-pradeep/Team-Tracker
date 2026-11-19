@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -27,16 +27,63 @@ export default function MainLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [showNotifs, setShowNotifs] = useState(false);
+  const [notificationsLoading, setNotificationsLoading] = useState(true);
+  const [notificationsUpdating, setNotificationsUpdating] = useState(false);
+  const [notificationError, setNotificationError] = useState('');
+  const notificationsPanelRef = useRef(null);
 
   useEffect(() => {
-    api.get('/notifications').then((res) => setNotifications(res.data.data || [])).catch(() => {});
+    let active = true;
+    setNotificationsLoading(true);
+    setNotificationError('');
+    api.get('/notifications')
+      .then((res) => {
+        if (active) setNotifications(res.data.data || []);
+      })
+      .catch((error) => {
+        if (active) {
+          setNotificationError(error.response?.data?.message || 'Unable to load notifications.');
+        }
+      })
+      .finally(() => {
+        if (active) setNotificationsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
   }, [location.pathname]);
+
+  useEffect(() => {
+    if (!showNotifs) return undefined;
+    const handlePointerDown = (event) => {
+      if (!notificationsPanelRef.current?.contains(event.target)) setShowNotifs(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setShowNotifs(false);
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showNotifs]);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const handleMarkAllRead = async () => {
-    await api.put('/notifications/read-all');
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    if (unreadCount === 0 || notificationsUpdating) return;
+    setNotificationsUpdating(true);
+    setNotificationError('');
+    try {
+      await api.put('/notifications/read-all');
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    } catch (error) {
+      setNotificationError(error.response?.data?.message || 'Unable to mark notifications as read.');
+    } finally {
+      setNotificationsUpdating(false);
+    }
   };
 
   const handleLogout = () => {
@@ -134,10 +181,13 @@ export default function MainLayout() {
             </h1>
           </div>
 
-          <div className="relative flex items-center space-x-3">
+          <div ref={notificationsPanelRef} className="relative flex items-center space-x-3">
             <button
               onClick={() => setShowNotifs(!showNotifs)}
               className="relative p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              aria-label="Notifications"
+              aria-expanded={showNotifs}
+              aria-haspopup="dialog"
             >
               <Bell size={20} />
               {unreadCount > 0 && (
@@ -148,18 +198,31 @@ export default function MainLayout() {
             </button>
 
             {showNotifs && (
-              <div className="absolute right-0 top-12 w-80 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl z-50 p-4">
+              <section
+                role="dialog"
+                aria-label="Recent notifications"
+                className="absolute right-0 top-12 w-80 max-w-[calc(100vw-2rem)] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl z-50 p-4"
+              >
                 <div className="flex items-center justify-between mb-3">
                   <span className="font-semibold text-sm">Notifications</span>
-                  <button onClick={handleMarkAllRead} className="text-xs text-indigo-500 hover:underline">
-                    Mark all read
+                  <button
+                    onClick={handleMarkAllRead}
+                    disabled={unreadCount === 0 || notificationsUpdating}
+                    className="text-xs text-indigo-500 hover:underline disabled:opacity-50 disabled:no-underline"
+                  >
+                    {notificationsUpdating ? 'Marking...' : 'Mark all as read'}
                   </button>
                 </div>
-                <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {notifications.length === 0 ? (
+                {notificationError && (
+                  <p role="alert" className="mb-2 text-xs text-red-500">{notificationError}</p>
+                )}
+                <div className="space-y-2 max-h-80 overflow-y-auto">
+                  {notificationsLoading ? (
+                    <p className="text-xs text-slate-500 py-4 text-center">Loading notifications...</p>
+                  ) : notifications.length === 0 ? (
                     <p className="text-xs text-slate-500 py-4 text-center">No notifications yet</p>
                   ) : (
-                    notifications.map((n) => (
+                    notifications.slice(0, 8).map((n) => (
                       <div
                         key={n._id}
                         className={`p-2.5 rounded-xl text-xs ${
@@ -168,11 +231,14 @@ export default function MainLayout() {
                       >
                         <p className="font-semibold">{n.title}</p>
                         <p className="text-slate-500 mt-0.5">{n.message}</p>
+                        <time className="block mt-1 text-[10px] text-slate-400" dateTime={n.createdAt}>
+                          {new Date(n.createdAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                        </time>
                       </div>
                     ))
                   )}
                 </div>
-              </div>
+              </section>
             )}
           </div>
         </header>

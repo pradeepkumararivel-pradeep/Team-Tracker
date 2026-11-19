@@ -6,24 +6,48 @@ import { FolderKanban, CheckCircle2, Clock, AlertTriangle, TrendingUp } from 'lu
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  useEffect(() => {
+  const loadDashboard = () => {
+    setLoading(true);
+    setError('');
     api.get('/dashboard')
       .then((res) => setStats(res.data.data))
-      .catch(() => {})
+      .catch((requestError) => {
+        setError(requestError.response?.data?.message || 'Unable to load dashboard analytics.');
+      })
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    loadDashboard();
   }, []);
 
   if (loading) {
     return <div className="animate-pulse space-y-4">Loading dashboard analytics...</div>;
   }
 
+  if (error) {
+    return (
+      <div className="p-8 text-center rounded-2xl border border-red-200 dark:border-red-900/50" role="alert">
+        <p className="text-sm text-red-500">{error}</p>
+        <button
+          type="button"
+          onClick={loadDashboard}
+          className="mt-3 px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
+
   const cards = [
-    { label: 'Total Projects', value: stats?.totalProjects || 0, icon: FolderKanban, color: 'text-indigo-500' },
-    { label: 'Completed Tasks', value: stats?.completedTasks || 0, icon: CheckCircle2, color: 'text-emerald-500' },
-    { label: 'Pending Tasks', value: stats?.pendingTasks || 0, icon: Clock, color: 'text-amber-500' },
-    { label: 'Overdue Tasks', value: stats?.overdueTasks || 0, icon: AlertTriangle, color: 'text-rose-500' },
-    { label: 'Productivity', value: `${stats?.productivityRate || 0}%`, icon: TrendingUp, color: 'text-cyan-500' }
+    { label: 'Total Projects', value: stats?.totalProjects ?? 0, icon: FolderKanban, color: 'text-indigo-500' },
+    { label: 'Completed Tasks', value: stats?.completedTasks ?? 0, icon: CheckCircle2, color: 'text-emerald-500' },
+    { label: 'Pending Tasks', value: stats?.pendingTasks ?? 0, icon: Clock, color: 'text-amber-500' },
+    { label: 'Overdue Tasks', value: stats?.overdueTasks ?? 0, icon: AlertTriangle, color: 'text-rose-500' },
+    { label: 'Productivity', value: `${stats?.productivityRate ?? 0}%`, icon: TrendingUp, color: 'text-cyan-500' }
   ];
 
   return (
@@ -51,7 +75,7 @@ export default function Dashboard() {
           <h3 className="font-semibold mb-4">Task Status Distribution</h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={stats?.tasksByStatus || []}>
+              <BarChart data={stats?.tasksByStatus ?? []}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.3} />
                 <XAxis dataKey="name" stroke="#94a3b8" />
                 <YAxis stroke="#94a3b8" allowDecimals={false} />
@@ -65,10 +89,10 @@ export default function Dashboard() {
         <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
           <h3 className="font-semibold mb-4">Recent Activity</h3>
           <div className="space-y-3">
-            {(stats?.recentActivity || []).length === 0 ? (
+            {(stats?.recentActivity ?? []).length === 0 ? (
               <p className="text-sm text-slate-500">No recent activity recorded.</p>
             ) : (
-              stats.recentActivity.map((act) => (
+              (stats?.recentActivity ?? []).map((act) => (
                 <div key={act._id} className="text-sm border-b border-slate-200 dark:border-slate-800 pb-2">
                   <p className="font-medium">{act.details}</p>
                   <p className="text-xs text-slate-500">

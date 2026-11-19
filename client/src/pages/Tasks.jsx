@@ -1,18 +1,30 @@
 import React, { useEffect, useState } from 'react';
 import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 import { DndContext, closestCenter } from '@dnd-kit/core';
+import { useSearchParams } from 'react-router-dom';
 import { Plus, Download } from 'lucide-react';
 
 const COLUMNS = ['To Do', 'In Progress', 'Review', 'Completed'];
+const EMPTY_FORM = { title: '', description: '', project: '', assignedTo: '', priority: 'Medium', deadline: '' };
 
 export default function Tasks() {
   const [tasks, setTasks] = useState([]);
   const [projects, setProjects] = useState([]);
   const [view, setView] = useState('kanban');
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ title: '', description: '', project: '', priority: 'Medium', deadline: '' });
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { user } = useAuth();
   const { socket } = useSocket();
+  const projectFilter = searchParams.get('project') || '';
+  const canAssignTasks = user?.role === 'Admin' || user?.role === 'Team Leader';
+  const selectedProject = projects.find((project) => project._id === form.project);
+  const filteredProject = projects.find((project) => project._id === projectFilter);
+  const filteredTasks = projectFilter
+    ? tasks.filter((task) => String(task.project?._id || task.project) === projectFilter)
+    : tasks;
 
   const loadData = async () => {
     const [taskRes, projRes] = await Promise.all([api.get('/tasks'), api.get('/projects')]);
@@ -39,13 +51,13 @@ export default function Tasks() {
     e.preventDefault();
     await api.post('/tasks', form);
     setShowModal(false);
-    setForm({ title: '', description: '', project: '', priority: 'Medium', deadline: '' });
+    setForm(EMPTY_FORM);
     loadData();
   };
 
   const exportCSV = () => {
     const headers = ['Title,Project,Status,Priority,Deadline'];
-    const rows = tasks.map(
+    const rows = filteredTasks.map(
       (t) => `"${t.title}","${t.project?.title || ''}","${t.status}","${t.priority}","${t.deadline || ''}"`
     );
     const blob = new Blob([headers.concat(rows).join('\n')], { type: 'text/csv' });
@@ -88,7 +100,32 @@ export default function Tasks() {
         </div>
       </div>
 
-      {view === 'kanban' ? (
+      {projectFilter && (
+        <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-indigo-500/10 text-sm">
+          <span>
+            Showing tasks for <strong>{filteredProject?.title || 'selected project'}</strong>
+          </span>
+          <button
+            type="button"
+            onClick={() => setSearchParams((current) => {
+              const next = new URLSearchParams(current);
+              next.delete('project');
+              return next;
+            })}
+            className="text-indigo-600 dark:text-indigo-400 font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded"
+          >
+            Clear filter
+          </button>
+        </div>
+      )}
+
+      {filteredTasks.length === 0 ? (
+        <div className="p-8 text-center rounded-2xl border border-dashed border-slate-300 dark:border-slate-700">
+          <p className="text-sm text-slate-500">
+            {projectFilter ? 'No tasks found for this project yet.' : 'No tasks yet. Create a task to get started.'}
+          </p>
+        </div>
+      ) : view === 'kanban' ? (
         <DndContext collisionDetection={closestCenter}>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {COLUMNS.map((col) => (
@@ -99,11 +136,11 @@ export default function Tasks() {
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="font-semibold text-sm">{col}</h3>
                   <span className="text-xs px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800">
-                    {tasks.filter((t) => t.status === col).length}
+                    {filteredTasks.filter((t) => t.status === col).length}
                   </span>
                 </div>
                 <div className="space-y-3">
-                  {tasks
+                  {filteredTasks
                     .filter((t) => t.status === col)
                     .map((task) => (
                       <div
@@ -128,6 +165,9 @@ export default function Tasks() {
                         </div>
                         <p className="font-semibold text-sm">{task.title}</p>
                         <p className="text-xs text-slate-500">{task.project?.title}</p>
+                        <p className="text-xs text-slate-500">
+                          Assigned to: {task.assignedTo?.name || 'Unassigned'}
+                        </p>
                       </div>
                     ))}
                 </div>
@@ -142,15 +182,17 @@ export default function Tasks() {
               <tr>
                 <th className="p-4">Task</th>
                 <th className="p-4">Project</th>
+                <th className="p-4">Assignee</th>
                 <th className="p-4">Priority</th>
                 <th className="p-4">Status</th>
               </tr>
             </thead>
             <tbody>
-              {tasks.map((t) => (
+              {filteredTasks.map((t) => (
                 <tr key={t._id} className="border-b border-slate-200 dark:border-slate-800">
                   <td className="p-4 font-medium">{t.title}</td>
                   <td className="p-4 text-slate-500">{t.project?.title}</td>
+                  <td className="p-4 text-slate-500">{t.assignedTo?.name || 'Unassigned'}</td>
                   <td className="p-4">{t.priority}</td>
                   <td className="p-4">
                     <select
@@ -180,7 +222,7 @@ export default function Tasks() {
               <select
                 required
                 value={form.project}
-                onChange={(e) => setForm({ ...form, project: e.target.value })}
+                onChange={(e) => setForm({ ...form, project: e.target.value, assignedTo: '' })}
                 className="w-full px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-950 border border-slate-700"
               >
                 <option value="">Select Project</option>
@@ -190,6 +232,27 @@ export default function Tasks() {
                   </option>
                 ))}
               </select>
+              {canAssignTasks && (
+                <select
+                  value={form.assignedTo}
+                  onChange={(e) => setForm({ ...form, assignedTo: e.target.value })}
+                  disabled={!selectedProject}
+                  className="w-full px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-950 border border-slate-700 disabled:opacity-50"
+                >
+                  <option value="">Unassigned</option>
+                  {(selectedProject?.members || []).map((member) => (
+                    <option key={member._id} value={member._id}>
+                      {member.name} ({member.role})
+                    </option>
+                  ))}
+                </select>
+              )}
+              {!canAssignTasks && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  Only Admins and Team Leaders can assign tasks. Your current role is {user?.role || 'unknown'}.
+                  Ask an Admin to make you a Team Leader if you need to assign tasks.
+                </p>
+              )}
               <input
                 type="text"
                 required
