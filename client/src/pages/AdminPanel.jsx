@@ -1,7 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
+
+const isCurrentUser = (candidate, currentUser) => (
+  Boolean(candidate?._id && currentUser?._id && String(candidate._id) === String(currentUser._id))
+);
 
 export default function AdminPanel() {
+  const { user: currentUser } = useAuth();
   const [users, setUsers] = useState([]);
   const [logs, setLogs] = useState([]);
 
@@ -85,10 +91,12 @@ export default function AdminPanel() {
                   </td>
                   <td className="px-5 py-4 text-right">
                     <button
+                      disabled={isCurrentUser(u, currentUser)}
+                      title={isCurrentUser(u, currentUser) ? 'You cannot deactivate your own account' : undefined}
                       onClick={() => handleToggleStatus(u._id)}
-                      className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 dark:border-slate-700 dark:text-slate-300 dark:hover:border-indigo-500/40 dark:hover:bg-indigo-500/10 dark:hover:text-indigo-300"
+                      className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:text-slate-300 dark:hover:border-indigo-500/40 dark:hover:bg-indigo-500/10 dark:hover:text-indigo-300"
                     >
-                      {u.isActive ? 'Deactivate' : 'Activate'}
+                      {isCurrentUser(u, currentUser) ? 'Current account' : u.isActive ? 'Deactivate' : 'Activate'}
                     </button>
                   </td>
                 </tr>

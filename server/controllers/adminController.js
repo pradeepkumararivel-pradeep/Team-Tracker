@@ -34,6 +34,9 @@ const toggleUserStatus = async (req, res, next) => {
   try {
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    if (String(user._id) === String(req.user._id)) {
+      return res.status(403).json({ success: false, message: 'You cannot deactivate your own account' });
+    }
     user.isActive = !user.isActive;
     await user.save();
     await ActivityLog.create({
