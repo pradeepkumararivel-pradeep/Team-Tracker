@@ -12,9 +12,10 @@ jest.mock('../models/ActivityLog', () => ({ create: jest.fn() }));
 jest.mock('../models/Notification', () => ({ create: jest.fn() }));
 
 const Project = require('../models/Project');
+const Task = require('../models/Task');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
-const { addMember, getAvailableMembers } = require('../controllers/projectController');
+const { addMember, getAvailableMembers, deleteProject } = require('../controllers/projectController');
 
 const createResponse = () => {
   const res = {};
@@ -73,5 +74,22 @@ describe('Project member management', () => {
     expect(project.members).toContain(memberId);
     expect(project.save).toHaveBeenCalled();
     expect(Notification.create).toHaveBeenCalledWith(expect.objectContaining({ recipient: memberId }));
+  });
+
+  it('allows admins to delete projects and their tasks', async () => {
+    const project = { _id: 'project-id', deleteOne: jest.fn() };
+    Project.findById.mockResolvedValue(project);
+    Task.deleteMany.mockResolvedValue({});
+    const req = {
+      params: { id: 'project-id' },
+      user: { role: 'Admin', _id: 'admin-id' }
+    };
+    const res = createResponse();
+
+    await deleteProject(req, res, jest.fn());
+
+    expect(Task.deleteMany).toHaveBeenCalledWith({ project: 'project-id' });
+    expect(project.deleteOne).toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
   });
 });

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { Plus, Calendar, Users } from 'lucide-react';
+import { Plus, Calendar, Users, Trash2 } from 'lucide-react';
 
 export default function Projects() {
   const { user } = useAuth();
@@ -14,6 +14,8 @@ export default function Projects() {
   const [form, setForm] = useState({ title: '', description: '', deadline: '', priority: 'Medium' });
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [deletingProjectId, setDeletingProjectId] = useState('');
   const [memberProject, setMemberProject] = useState(null);
   const [availableMembers, setAvailableMembers] = useState([]);
   const [selectedMemberId, setSelectedMemberId] = useState('');
@@ -91,13 +93,41 @@ export default function Projects() {
     }
   };
 
+  const handleDeleteProject = async (project) => {
+    const confirmed = window.confirm(
+      `Delete "${project.title}" and all tasks in this project? This action cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setDeletingProjectId(project._id);
+    setActionError('');
+    try {
+      await api.delete(`/projects/${project._id}`);
+      setProjects((current) => current.filter((item) => item._id !== project._id));
+      setTasks((current) => current.filter((task) =>
+        String(task.project?._id || task.project) !== String(project._id)
+      ));
+      if (memberProject?._id === project._id) setMemberProject(null);
+    } catch (error) {
+      setActionError(error.response?.data?.message || `Unable to delete "${project.title}".`);
+    } finally {
+      setDeletingProjectId('');
+    }
+  };
+
   const canCreate = user?.role === 'Admin' || user?.role === 'Team Leader';
+  const isAdmin = user?.role === 'Admin';
   const canManageMembers = (project) =>
     user?.role === 'Admin' || (user?.role === 'Team Leader' && project.owner?._id === user?._id);
+  const projectTitleCounts = projects.reduce((counts, project) => {
+    const title = String(project.title || '').trim().toLowerCase();
+    counts.set(title, (counts.get(title) ?? 0) + 1);
+    return counts;
+  }, new Map());
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="sticky top-0 z-20 -mx-6 -mt-6 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 bg-slate-50/95 px-6 pb-3 pt-6 backdrop-blur dark:border-slate-800/80 dark:bg-slate-950/95">
         <div>
           <h2 className="text-2xl font-bold">Projects</h2>
           <p className="text-sm text-slate-500">Manage team initiatives and track milestones</p>
@@ -115,6 +145,8 @@ export default function Projects() {
           </button>
         )}
       </div>
+
+      {actionError && <p role="alert" className="text-sm text-red-500">{actionError}</p>}
 
       {loading ? (
         <div className="p-8 text-center text-sm text-slate-500" role="status">Loading projects...</div>
@@ -137,8 +169,10 @@ export default function Projects() {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {projects.map((proj) => {
+            const normalizedTitle = String(proj.title || '').trim().toLowerCase();
+            const hasDuplicateTitle = (projectTitleCounts.get(normalizedTitle) ?? 0) > 1;
             const projectTasks = tasks.filter((task) => {
               const taskProjectId = task.project?._id || task.project;
               return String(taskProjectId) === String(proj._id);
@@ -172,7 +206,17 @@ export default function Projects() {
                       {proj.priority}
                     </span>
                   </div>
-                  <h3 className="text-lg font-bold">{proj.title}</h3>
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="text-lg font-bold">{proj.title}</h3>
+                    {hasDuplicateTitle && (
+                      <span
+                        title={`Project ID: ${proj._id}`}
+                        className="shrink-0 rounded-md bg-slate-100 px-2 py-1 font-mono text-[10px] text-slate-500 dark:bg-slate-800"
+                      >
+                        ID {String(proj._id).slice(-6).toUpperCase()}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-sm text-slate-500 mt-1 line-clamp-2">{proj.description}</p>
                 </div>
 
@@ -218,7 +262,7 @@ export default function Projects() {
                     to={`/tasks?project=${encodeURIComponent(proj._id)}`}
                     className="block w-full px-3 py-2 rounded-lg bg-indigo-600 text-white text-center text-sm transition-colors duration-200 hover:bg-indigo-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900"
                   >
-                    View tasks ({taskCount})
+                    <span>View tasks ({taskCount})</span>
                   </Link>
                   {canManageMembers(proj) && (
                     <button
@@ -227,6 +271,17 @@ export default function Projects() {
                       className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 text-sm transition-colors duration-200 hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                     >
                       Manage members
+                    </button>
+                  )}
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteProject(proj)}
+                      disabled={deletingProjectId === proj._id}
+                      className="flex w-full items-center justify-center gap-2 px-3 py-2 rounded-lg border border-red-300 text-red-600 text-sm transition-colors duration-200 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/40"
+                    >
+                      <Trash2 size={15} />
+                      {deletingProjectId === proj._id ? 'Deleting...' : 'Delete project'}
                     </button>
                   )}
                 </div>

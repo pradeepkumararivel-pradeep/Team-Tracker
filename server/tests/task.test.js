@@ -15,7 +15,7 @@ const Task = require('../models/Task');
 const Project = require('../models/Project');
 const Notification = require('../models/Notification');
 const ActivityLog = require('../models/ActivityLog');
-const { createTask, updateTask } = require('../controllers/taskController');
+const { createTask, updateTask, deleteTask } = require('../controllers/taskController');
 
 const createProject = () => ({
   _id: 'project-id',
@@ -98,5 +98,43 @@ describe('Task assignment', () => {
 
     expect(res.status).toHaveBeenCalledWith(403);
     expect(task.save).not.toHaveBeenCalled();
+  });
+
+  it('allows admins to remove an assignee', async () => {
+    const task = { project: 'project-id', assignedTo: 'member-id', save: jest.fn() };
+    const populatedTask = { populate: jest.fn().mockReturnThis() };
+    Task.findById
+      .mockResolvedValueOnce(task)
+      .mockReturnValueOnce(populatedTask);
+    Task.find.mockResolvedValue([]);
+    Project.findByIdAndUpdate.mockResolvedValue({});
+    const req = {
+      user: { role: 'Admin' },
+      params: { id: 'task-id' },
+      body: { assignedTo: null },
+      app: { get: () => null }
+    };
+    const res = createResponse();
+
+    await updateTask(req, res, jest.fn());
+
+    expect(task.assignedTo).toBeNull();
+    expect(task.save).toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
+  });
+
+  it('allows admins to delete tasks and recalculates project progress', async () => {
+    const task = { project: 'project-id', deleteOne: jest.fn() };
+    Task.findById.mockResolvedValue(task);
+    Task.find.mockResolvedValue([]);
+    Project.findByIdAndUpdate.mockResolvedValue({});
+    const req = { user: { role: 'Admin' }, params: { id: 'task-id' } };
+    const res = createResponse();
+
+    await deleteTask(req, res, jest.fn());
+
+    expect(task.deleteOne).toHaveBeenCalled();
+    expect(Project.findByIdAndUpdate).toHaveBeenCalledWith('project-id', { progress: 0 });
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
   });
 });

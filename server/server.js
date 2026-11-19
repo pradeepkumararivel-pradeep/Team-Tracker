@@ -47,7 +47,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 300,
+  max: process.env.NODE_ENV === 'production' ? 300 : 5000,
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, message: 'Too many requests, please try again later.' }

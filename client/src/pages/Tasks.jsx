@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 import { DndContext, closestCenter } from '@dnd-kit/core';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, Download } from 'lucide-react';
+import { Plus, Download, Trash2, UserRoundX } from 'lucide-react';
 
 const COLUMNS = ['To Do', 'In Progress', 'Review', 'Completed'];
 const EMPTY_FORM = { title: '', description: '', project: '', assignedTo: '', priority: 'Medium', deadline: '' };
@@ -15,11 +15,15 @@ export default function Tasks() {
   const [view, setView] = useState('kanban');
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [actionError, setActionError] = useState('');
+  const [deletingTaskId, setDeletingTaskId] = useState('');
+  const [unassigningTaskId, setUnassigningTaskId] = useState('');
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const { socket } = useSocket();
   const projectFilter = searchParams.get('project') || '';
   const canAssignTasks = user?.role === 'Admin' || user?.role === 'Team Leader';
+  const isAdmin = user?.role === 'Admin';
   const selectedProject = projects.find((project) => project._id === form.project);
   const filteredProject = projects.find((project) => project._id === projectFilter);
   const filteredTasks = projectFilter
@@ -43,8 +47,45 @@ export default function Tasks() {
   }, [socket]);
 
   const handleStatusChange = async (taskId, newStatus) => {
-    await api.put(`/tasks/${taskId}`, { status: newStatus });
-    loadData();
+    setActionError('');
+    try {
+      await api.put(`/tasks/${taskId}`, { status: newStatus });
+      loadData();
+    } catch (error) {
+      setActionError(error.response?.data?.message || 'Unable to update task status.');
+    }
+  };
+
+  const handleUnassignTask = async (task) => {
+    if (!window.confirm(`Remove ${task.assignedTo?.name || 'the current assignee'} from "${task.title}"?`)) {
+      return;
+    }
+
+    setUnassigningTaskId(task._id);
+    setActionError('');
+    try {
+      const { data } = await api.put(`/tasks/${task._id}`, { assignedTo: null });
+      setTasks((current) => current.map((item) => item._id === task._id ? data.data : item));
+    } catch (error) {
+      setActionError(error.response?.data?.message || `Unable to unassign "${task.title}".`);
+    } finally {
+      setUnassigningTaskId('');
+    }
+  };
+
+  const handleDeleteTask = async (task) => {
+    if (!window.confirm(`Delete "${task.title}"? This action cannot be undone.`)) return;
+
+    setDeletingTaskId(task._id);
+    setActionError('');
+    try {
+      await api.delete(`/tasks/${task._id}`);
+      setTasks((current) => current.filter((item) => item._id !== task._id));
+    } catch (error) {
+      setActionError(error.response?.data?.message || `Unable to delete "${task.title}".`);
+    } finally {
+      setDeletingTaskId('');
+    }
   };
 
   const handleCreateTask = async (e) => {
@@ -119,6 +160,8 @@ export default function Tasks() {
         </div>
       )}
 
+      {actionError && <p role="alert" className="text-sm text-red-500">{actionError}</p>}
+
       {filteredTasks.length === 0 ? (
         <div className="p-8 text-center rounded-2xl border border-dashed border-slate-300 dark:border-slate-700">
           <p className="text-sm text-slate-500">
@@ -168,6 +211,30 @@ export default function Tasks() {
                         <p className="text-xs text-slate-500">
                           Assigned to: {task.assignedTo?.name || 'Unassigned'}
                         </p>
+                        {isAdmin && (
+                          <div className="flex flex-wrap gap-2 pt-1">
+                            {task.assignedTo && (
+                              <button
+                                type="button"
+                                onClick={() => handleUnassignTask(task)}
+                                disabled={unassigningTaskId === task._id}
+                                className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-2 py-1 text-xs transition-colors hover:bg-slate-100 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                              >
+                                <UserRoundX size={13} />
+                                {unassigningTaskId === task._id ? 'Removing...' : 'Unassign'}
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteTask(task)}
+                              disabled={deletingTaskId === task._id}
+                              className="inline-flex items-center gap-1 rounded-lg border border-red-300 px-2 py-1 text-xs text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/40"
+                            >
+                              <Trash2 size={13} />
+                              {deletingTaskId === task._id ? 'Deleting...' : 'Delete'}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     ))}
                 </div>
@@ -185,6 +252,7 @@ export default function Tasks() {
                 <th className="p-4">Assignee</th>
                 <th className="p-4">Priority</th>
                 <th className="p-4">Status</th>
+                {isAdmin && <th className="p-4">Actions</th>}
               </tr>
             </thead>
             <tbody>
@@ -207,6 +275,34 @@ export default function Tasks() {
                       ))}
                     </select>
                   </td>
+                  {isAdmin && (
+                    <td className="p-4">
+                      <div className="flex flex-wrap gap-2">
+                        {t.assignedTo && (
+                          <button
+                            type="button"
+                            onClick={() => handleUnassignTask(t)}
+                            disabled={unassigningTaskId === t._id}
+                            aria-label={`Unassign ${t.title}`}
+                            title="Remove assignee"
+                            className="rounded-lg border border-slate-300 p-2 transition-colors hover:bg-slate-100 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                          >
+                            <UserRoundX size={15} />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteTask(t)}
+                          disabled={deletingTaskId === t._id}
+                          aria-label={`Delete ${t.title}`}
+                          title="Delete task"
+                          className="rounded-lg border border-red-300 p-2 text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/40"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
