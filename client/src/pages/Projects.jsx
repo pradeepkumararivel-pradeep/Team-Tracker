@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useOutletContext } from 'react-router-dom';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { Plus, Calendar, Users, Trash2 } from 'lucide-react';
+import { Calendar, Users, Trash2 } from 'lucide-react';
 
 export default function Projects() {
+  const { setPageHeader } = useOutletContext();
   const { user } = useAuth();
   const [projects, setProjects] = useState([]);
   const [tasks, setTasks] = useState([]);
@@ -125,27 +126,22 @@ export default function Projects() {
     return counts;
   }, new Map());
 
+  useEffect(() => {
+    setPageHeader({
+      title: 'Projects',
+      subtitle: 'Manage team initiatives and track milestones',
+      actionLabel: canCreate ? 'New Project' : null,
+      onAction: canCreate ? () => {
+        setCreateError('');
+        setShowModal(true);
+      } : null
+    });
+
+    return () => setPageHeader(null);
+  }, [setPageHeader, canCreate]);
+
   return (
     <div className="space-y-6">
-      <div className="sticky top-0 z-20 -mx-6 -mt-6 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 bg-slate-50/95 px-6 pb-3 pt-6 backdrop-blur dark:border-slate-800/80 dark:bg-slate-950/95">
-        <div>
-          <h2 className="text-2xl font-bold">Projects</h2>
-          <p className="text-sm text-slate-500">Manage team initiatives and track milestones</p>
-        </div>
-        {canCreate && (
-          <button
-            onClick={() => {
-              setCreateError('');
-              setShowModal(true);
-            }}
-            className="flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium"
-          >
-            <Plus size={18} />
-            <span>New Project</span>
-          </button>
-        )}
-      </div>
-
       {actionError && <p role="alert" className="text-sm text-red-500">{actionError}</p>}
 
       {loading ? (

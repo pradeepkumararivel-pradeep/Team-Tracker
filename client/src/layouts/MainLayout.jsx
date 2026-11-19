@@ -16,7 +16,8 @@ import {
   Bell,
   Menu,
   X,
-  User as UserIcon
+  User as UserIcon,
+  Plus
 } from 'lucide-react';
 
 export default function MainLayout() {
@@ -30,7 +31,13 @@ export default function MainLayout() {
   const [notificationsLoading, setNotificationsLoading] = useState(true);
   const [notificationsUpdating, setNotificationsUpdating] = useState(false);
   const [notificationError, setNotificationError] = useState('');
+  const [pageHeader, setPageHeader] = useState(null);
   const notificationsPanelRef = useRef(null);
+  const mainContentRef = useRef(null);
+
+  useEffect(() => {
+    mainContentRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, [location.pathname]);
 
   useEffect(() => {
     let active = true;
@@ -168,78 +175,99 @@ export default function MainLayout() {
       {/* Main Content Wrapper */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top Header */}
-        <header className="h-16 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-6 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
+        <header
+          className={`shrink-0 border-b border-slate-200 bg-white px-4 dark:border-slate-800 dark:bg-slate-900 sm:px-6 ${
+            pageHeader ? 'flex min-h-20 items-center justify-between gap-3 py-3' : 'flex h-16 items-center justify-between'
+          }`}
+        >
+          <div className="flex min-w-0 items-center gap-3">
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               className="md:hidden p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
             >
               {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
-            <h1 className="font-semibold text-lg capitalize">
-              {navItems.find((i) => i.path === location.pathname)?.label || 'TeamTracker'}
-            </h1>
+            <div className="min-w-0">
+              <h1 className="truncate font-semibold text-lg capitalize">
+                {pageHeader?.title || navItems.find((i) => i.path === location.pathname)?.label || 'TeamTracker'}
+              </h1>
+              {pageHeader?.subtitle && (
+                <p className="truncate text-xs text-slate-500 sm:text-sm">{pageHeader.subtitle}</p>
+              )}
+            </div>
           </div>
 
-          <div ref={notificationsPanelRef} className="relative flex items-center space-x-3">
-            <button
-              onClick={() => setShowNotifs(!showNotifs)}
-              className="relative p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              aria-label="Notifications"
-              aria-expanded={showNotifs}
-              aria-haspopup="dialog"
-            >
-              <Bell size={20} />
-              {unreadCount > 0 && (
-                <span className="absolute top-1 right-1 h-4 w-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center font-bold">
-                  {unreadCount}
-                </span>
-              )}
-            </button>
-
-            {showNotifs && (
-              <section
-                role="dialog"
-                aria-label="Recent notifications"
-                className="absolute right-0 top-12 w-80 max-w-[calc(100vw-2rem)] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl z-50 p-4"
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            {pageHeader?.actionLabel && pageHeader.onAction && (
+              <button
+                type="button"
+                onClick={pageHeader.onAction}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900 sm:gap-2 sm:px-4"
               >
-                <div className="flex items-center justify-between mb-3">
-                  <span className="font-semibold text-sm">Notifications</span>
-                  <button
-                    onClick={handleMarkAllRead}
-                    disabled={unreadCount === 0 || notificationsUpdating}
-                    className="text-xs text-indigo-500 hover:underline disabled:opacity-50 disabled:no-underline"
-                  >
-                    {notificationsUpdating ? 'Marking...' : 'Mark all as read'}
-                  </button>
-                </div>
-                {notificationError && (
-                  <p role="alert" className="mb-2 text-xs text-red-500">{notificationError}</p>
-                )}
-                <div className="space-y-2 max-h-80 overflow-y-auto">
-                  {notificationsLoading ? (
-                    <p className="text-xs text-slate-500 py-4 text-center">Loading notifications...</p>
-                  ) : notifications.length === 0 ? (
-                    <p className="text-xs text-slate-500 py-4 text-center">No notifications yet</p>
-                  ) : (
-                    notifications.slice(0, 8).map((n) => (
-                      <div
-                        key={n._id}
-                        className={`p-2.5 rounded-xl text-xs ${
-                          n.read ? 'opacity-60' : 'bg-indigo-500/10 border border-indigo-500/20'
-                        }`}
-                      >
-                        <p className="font-semibold">{n.title}</p>
-                        <p className="text-slate-500 mt-0.5">{n.message}</p>
-                        <time className="block mt-1 text-[10px] text-slate-400" dateTime={n.createdAt}>
-                          {new Date(n.createdAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
-                        </time>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </section>
+                <Plus size={17} />
+                <span>{pageHeader.actionLabel}</span>
+              </button>
             )}
+            <div ref={notificationsPanelRef} className="relative flex items-center">
+              <button
+                onClick={() => setShowNotifs(!showNotifs)}
+                className="relative p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                aria-label="Notifications"
+                aria-expanded={showNotifs}
+                aria-haspopup="dialog"
+              >
+                <Bell size={20} />
+                {unreadCount > 0 && (
+                  <span className="absolute top-1 right-1 h-4 w-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center font-bold">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {showNotifs && (
+                <section
+                  role="dialog"
+                  aria-label="Recent notifications"
+                  className="absolute right-0 top-12 w-80 max-w-[calc(100vw-2rem)] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl z-50 p-4"
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="font-semibold text-sm">Notifications</span>
+                    <button
+                      onClick={handleMarkAllRead}
+                      disabled={unreadCount === 0 || notificationsUpdating}
+                      className="text-xs text-indigo-500 hover:underline disabled:opacity-50 disabled:no-underline"
+                    >
+                      {notificationsUpdating ? 'Marking...' : 'Mark all as read'}
+                    </button>
+                  </div>
+                  {notificationError && (
+                    <p role="alert" className="mb-2 text-xs text-red-500">{notificationError}</p>
+                  )}
+                  <div className="space-y-2 max-h-80 overflow-y-auto">
+                    {notificationsLoading ? (
+                      <p className="text-xs text-slate-500 py-4 text-center">Loading notifications...</p>
+                    ) : notifications.length === 0 ? (
+                      <p className="text-xs text-slate-500 py-4 text-center">No notifications yet</p>
+                    ) : (
+                      notifications.slice(0, 8).map((n) => (
+                        <div
+                          key={n._id}
+                          className={`p-2.5 rounded-xl text-xs ${
+                            n.read ? 'opacity-60' : 'bg-indigo-500/10 border border-indigo-500/20'
+                          }`}
+                        >
+                          <p className="font-semibold">{n.title}</p>
+                          <p className="text-slate-500 mt-0.5">{n.message}</p>
+                          <time className="block mt-1 text-[10px] text-slate-400" dateTime={n.createdAt}>
+                            {new Date(n.createdAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                          </time>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </section>
+              )}
+            </div>
           </div>
         </header>
 
@@ -259,8 +287,8 @@ export default function MainLayout() {
           </div>
         )}
 
-        <main className="flex-1 overflow-y-auto p-6">
-          <Outlet />
+        <main ref={mainContentRef} className="flex-1 overflow-y-auto p-6">
+          <Outlet context={{ setPageHeader }} />
         </main>
       </div>
     </div>
