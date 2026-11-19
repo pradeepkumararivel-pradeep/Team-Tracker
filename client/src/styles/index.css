@@ -5,3 +5,13 @@
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
+
+select option {
+  color: #0f172a;
+  background-color: #fff;
+}
+
+.dark select option {
+  color: #e2e8f0;
+  background-color: #0f172a;
+}
